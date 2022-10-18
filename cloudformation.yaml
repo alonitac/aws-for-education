@@ -413,6 +413,7 @@ Resources:
       Runtime: python3.9
       Tracing: Active
       Timeout: 600
+      MemorySize: 256
       Policies:
         - AWSLambdaExecute
         - PowerUserAccess
@@ -425,9 +426,14 @@ Resources:
             Enabled: true
       InlineCode: !Sub |
         from datetime import datetime, timedelta, timezone
-        import boto3
         import re
+        import sys
+        from pip._internal import main
 
+        main(['install', 'boto3>=1.24,<2.0', '--target', '/tmp/'])
+        sys.path.insert(0, '/tmp/')
+
+        import boto3
 
         # UNATTACHED_EBS_LIFESPAN = 7
         # LOAD_BALANCER_LIFESPAN = 30
@@ -484,7 +490,7 @@ Resources:
                 lb_lifespan = timedelta(days=LOAD_BALANCER_LIFESPAN)
                 tags = elb.describe_tags(ResourceArns=[lb['LoadBalancerArn']])
                 for tag in tags['TagDescriptions']:
-                    for t in tag['Tags']:
+                    for t in tag.get('Tags', []):
                         if t['Key'].lower().strip() == 'lifespan':
                             try:
                                 lb_lifespan = timedelta(days=max(int(t['Value']), LOAD_BALANCER_LIFESPAN))
@@ -515,6 +521,8 @@ Resources:
 
                 for description in descriptions['Reservations']:
                     for instance in description['Instances']:
+                        ec2_lifespan = timedelta(days=STOPPED_EC2_LIFESPAN)
+
                         # valid state values: 'pending'|'running'|'shutting-down'|'terminated'|'stopping'|'stopped'
                         if instance['State']['Name'] in ['running']:
 
@@ -530,7 +538,14 @@ Resources:
                             if stopped_time:
                                 stopped_time = datetime.strptime(stopped_time[0].split(' ')[0], '%Y-%m-%d')
 
-                                if datetime.now() - stopped_time > timedelta(days=STOPPED_EC2_LIFESPAN):
+                                for tag in instance.get('Tags', []):
+                                    if tag['Key'].lower().strip() == 'lifespan':
+                                        try:
+                                            ec2_lifespan = timedelta(days=max(int(tag['Value']), STOPPED_EC2_LIFESPAN))
+                                        except:
+                                            pass
+
+                                if datetime.now() - stopped_time > ec2_lifespan:
                                     res = ec2.modify_instance_attribute(
                                         InstanceId=instance['InstanceId'],
                                         DisableApiTermination={'Value': False}
@@ -551,20 +566,21 @@ Resources:
         def delete_old_rds_db_instances(region):
             rds = boto3.client('rds', region_name=region['RegionName'])
             dbs = rds.describe_db_instances()
-            db_lifespan = timedelta(days=DB_LIFESPAN)
 
             for db in dbs['DBInstances']:
+                db_lifespan = timedelta(days=DB_LIFESPAN)
+
                 tags = rds.list_tags_for_resource(
                     ResourceName=db['DBInstanceArn']
                 )
-                for tag in tags['TagList']:
+                for tag in tags.get('TagList', []):
                     if tag['Key'].lower().strip() == 'lifespan':
                         try:
                             db_lifespan = timedelta(days=max(int(tag['Value']), DB_LIFESPAN))
                         except:
                             pass
 
-                if datetime.now(timezone.utc) - db['InstanceCreateTime'] > db_lifespan:
+                if db['DBInstanceStatus'] != 'deleting' and datetime.now(timezone.utc) - db['InstanceCreateTime'] > db_lifespan:
                     print(f'Deleting RDS DB: {db}')
                     response = rds.delete_db_instance(
                         DBInstanceIdentifier=db['DBInstanceIdentifier'],
@@ -584,13 +600,11 @@ Resources:
 
                 print(f'Working on region {region["RegionName"]}')
 
-                try:
-                    stop_and_terminate_ec2(region)
-                    delete_non_attached_old_ebs(region)
-                    delete_old_load_balancers(region)
-                    delete_old_rds_db_instances(region)
-                except Exception as err:
-                    print(f'An error occurred {err}')
+                stop_and_terminate_ec2(region)
+                delete_non_attached_old_ebs(region)
+                delete_old_load_balancers(region)
+                delete_old_rds_db_instances(region)
 
 
-        # handler_name(None, None)
+
+        # handler(None, None)

@@ -1,7 +1,12 @@
 from datetime import datetime, timedelta, timezone
-import boto3
 import re
+import sys
+from pip._internal import main
 
+main(['install', 'boto3>=1.24,<2.0', '--target', '/tmp/'])
+sys.path.insert(0, '/tmp/')
+
+import boto3
 
 UNATTACHED_EBS_LIFESPAN = 7
 LOAD_BALANCER_LIFESPAN = 30
@@ -124,7 +129,7 @@ def stop_and_terminate_ec2(region):
 
     if instances_to_stop:
         print(f'Instances to stop: {instances_to_stop}')
-        # response = ec2.stop_instances(InstanceIds=instances_to_stop)
+        response = ec2.stop_instances(InstanceIds=instances_to_stop)
 
     if instances_to_terminate:
         print(f'Instances to terminate: {instances_to_terminate}')
