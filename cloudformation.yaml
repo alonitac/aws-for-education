@@ -1,0 +1,596 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: 'AWS::Serverless-2016-10-31'
+Parameters:
+  TurnOffVMTime1:
+    Type: String
+    Default: 13
+    AllowedValues: ["01", "02", "03", "04", "05", "06", "07", "08", "09", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "00"]
+    Description: The hour in day to turn off VM automatically. The specified time in UTC, for Israel time reduce 3 hours (or 2, depending the session).
+  TurnOffVMTime2:
+    Type: String
+    Default: 21
+    AllowedValues: [ "01", "02", "03", "04", "05", "06", "07", "08", "09", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "00" ]
+    Description: The hour in day to turn off VM automatically. The specified time in UTC, for Israel time reduce 3 hours (or 2, depending the session).
+  UnattachedVolumesLifespan:
+    Type: Number
+    Default: 7
+    Description: The time after which an unattached volume will be deleted (in Days)
+  LoadBalancerLifespan:
+    Type: Number
+    Default: 30
+    Description: The time after which a load balancer will be deleted (in Days)
+  StoppedEC2InstanceLifespan:
+    Type: Number
+    Default: 30
+    Description: The time after which a stopped EC2 will be deleted (in Days)
+  DatabaseRDSLifespan:
+    Type: Number
+    Default: 30
+    Description: The time after which an RDS db will be deleted (in Days)
+Resources:
+  StudentsGroup:
+    Type: AWS::IAM::Group
+    Properties:
+      GroupName: students
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/AdministratorAccess'
+      Policies:
+        - PolicyName: AWSMarketplaceRead-only
+          PolicyDocument: |
+            {
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Resource": "*",
+                  "Action": [
+                    "aws-marketplace:Accept*",
+                    "aws-marketplace:Cancel*",
+                    "aws-marketplace:Create*",
+                    "aws-marketplace:Reject*",
+                    "aws-marketplace:Subscribe*",
+                    "aws-marketplace:Unsubscribe*",
+                    "aws-marketplace:Update*"
+                  ],
+                  "Effect": "Deny"
+                }
+              ]
+            }
+
+        - PolicyName: DenyAWSCloudTrail-Config-Guard
+          PolicyDocument: |
+            {
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Effect": "Deny",
+                  "Action": [
+                    "guardduty:AcceptInvitation",
+                    "guardduty:ArchiveFindings",
+                    "guardduty:CreateDetector",
+                    "guardduty:Create*",
+                    "guardduty:DeclineInvitations",
+                    "guardduty:Delete*",
+                    "guardduty:Disassociate*",
+                    "guardduty:InviteMembers",
+                    "guardduty:StartMonitoringMembers",
+                    "guardduty:StopMonitoringMembers",
+                    "guardduty:TagResource",
+                    "guardduty:UnarchiveFindings",
+                    "guardduty:Untag*"
+                  ],
+                  "Resource": "*"
+                },
+                {
+                  "Effect": "Deny",
+                  "Action": [
+                    "cloudtrail:DeleteTrail",
+                    "cloudtrail:PutEventSelectors",
+                    "cloudtrail:StopLogging",
+                    "cloudtrail:UpdateTrail"
+                  ],
+                  "Resource": [
+                    "*"
+                  ]
+                },
+                {
+                  "Effect": "Deny",
+                  "Action": [
+                    "config:Delete*",
+                    "config:StopConfigurationRecorder"
+                  ],
+                  "Resource": "*"
+                }
+              ]
+            }
+
+        - PolicyName: DenyLeaveOrganization
+          PolicyDocument: |
+            {
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Effect": "Deny",
+                  "Action": [
+                    "organizations:LeaveOrganization"
+                  ],
+                  "Resource": "*"
+                }
+              ]
+            }
+
+        - PolicyName: DenyDynamoDBReservedCapacityPurchases
+          PolicyDocument: |
+            {
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Sid": "AllowReservedCapacityDescriptions",
+                  "Effect": "Allow",
+                  "Action": [
+                      "dynamodb:DescribeReservedCapacity",
+                      "dynamodb:DescribeReservedCapacityOfferings"
+                  ],
+                  "Resource": "arn:aws:dynamodb:*:*:*"
+                },
+                {
+                  "Sid": "DenyReservedCapacityPurchases",
+                  "Effect": "Deny",
+                  "Action": "dynamodb:PurchaseReservedCapacityOfferings",
+                  "Resource": "arn:aws:dynamodb:*:*:*"
+                }
+              ]
+            }
+
+        - PolicyName: DenyUsersAndGroupActions
+          PolicyDocument: |
+            {
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Sid": "DenyGroupManagementAccessToGroupUsers",
+                  "Effect": "Deny",
+                  "Action": [
+                    "iam:AddUserToGroup",
+                    "iam:CreateGroup",
+                    "iam:RemoveUserFromGroup",
+                    "iam:DeleteGroup",
+                    "iam:AttachGroupPolicy",
+                    "iam:UpdateGroup",
+                    "iam:DetachGroupPolicy",
+                    "iam:DeleteGroupPolicy",
+                    "iam:PutGroupPolicy"
+                  ],
+                  "Resource": "arn:aws:iam::*:group/students*"
+                },
+                {
+                  "Sid": "DenyUsersAndGroupPolicyActions",
+                  "Effect": "Deny",
+                  "Action": [
+                    "iam:AttachGroupPolicy",
+                    "iam:AttachUserPolicy",
+                    "iam:PutGroupPolicy",
+                    "iam:PutUserPolicy",
+                    "iam:PutUserPermissionsBoundary",
+                    "iam:UpdateAccountPasswordPolicy",
+                    "sts:AssumeRole"
+                  ],
+                  "Resource": "*"
+                }
+              ]
+            }
+
+        - PolicyName: DenyVPCPeering
+          PolicyDocument: |
+            {
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Sid": "RestrictVPCPeering",
+                  "Action": [
+                    "ec2:AcceptVpcPeeringConnection",
+                    "ec2:CreateVpcPeeringConnection"
+                  ],
+                  "Resource": "*",
+                  "Effect": "Deny"
+                }
+              ]
+            }
+
+        - PolicyName: DisableRegions
+          PolicyDocument: |
+            {
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Sid": "EnableDisable",
+                  "Effect": "Deny",
+                  "Action": [
+                    "account:EnableRegion"
+                  ],
+                  "Resource": "*",
+                  "Condition": {
+                    "ForAnyValue:StringNotLike": {
+                      "account:TargetRegion": [
+                        "us-*",
+                        "eu-*"
+                      ]
+                    }
+                  }
+                },
+                {
+                  "Sid": "DenyAllOutsideRequestedRegions",
+                  "Effect": "Deny",
+                  "NotAction": [
+                    "cloudfront:*",
+                    "iam:*",
+                    "route53:*",
+                    "support:*"
+                  ],
+                  "Resource": "*",
+                  "Condition": {
+                    "ForAnyValue:StringNotLike": {
+                      "aws:RequestedRegion": [
+                        "us-*",
+                        "eu-*"
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+
+        - PolicyName: LimitEC2Instance
+          PolicyDocument: |
+            {
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Sid": "DenyInstanceType",
+                  "Effect": "Deny",
+                  "Action": "ec2:RunInstances",
+                  "Resource": [
+                    "arn:aws:ec2:*:*:instance/*"
+                  ],
+                  "Condition": {
+                    "ForAnyValue:StringNotLike": {
+                      "ec2:InstanceType": [
+                        "*.nano",
+                        "*.small",
+                        "*.micro"
+                      ]
+                    }
+                  }
+                },
+                {
+                  "Sid": "DenyReservedInstances",
+                  "Effect": "Deny",
+                  "Action": [
+                    "ec2:ModifyReservedInstances",
+                    "ec2:PurchaseReservedInstancesOffering"
+                  ],
+                  "Resource": "*"
+                },
+                {
+                  "Sid": "LimitInstanceVolumeType",
+                  "Effect": "Deny",
+                  "Action": "ec2:*",
+                  "Resource": "*",
+                  "Condition": {
+                    "ForAnyValue:StringNotLike": {
+                      "ec2:VolumeType": [
+                        "gp2",
+                        "standard"
+                      ]
+                    }
+                  }
+                },
+                {
+                  "Sid": "LimitInstanceVolumeSize",
+                  "Effect": "Deny",
+                  "Action": "ec2:*",
+                  "Resource": "*",
+                  "Condition": {
+                    "NumericGreaterThan": {
+                      "ec2:VolumeSize": "30"
+                    }
+                  }
+                }
+              ]
+            }
+
+        - PolicyName: RDSLimitInstanceType
+          PolicyDocument: |
+            {
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Action": "rds:CreateDBInstance",
+                  "Resource": "*",
+                  "Effect": "Deny",
+                  "Condition": {
+                    "ForAnyValue:StringNotLike": {
+                      "rds:DatabaseClass": [
+                        "*.medium",
+                        "*.small",
+                        "*.micro"
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+
+        - PolicyName: RequireMFA
+          PolicyDocument: |
+            {
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Sid": "AllowViewAccountInfo",
+                  "Effect": "Allow",
+                  "Action": [
+                    "iam:ListVirtualMFADevices",
+                    "iam:GetAccountPasswordPolicy"
+                  ],
+                  "Resource": "*"
+                },
+                {
+                  "Sid": "AllowManageOwnVirtualMFADevice",
+                  "Effect": "Allow",
+                  "Action": [
+                    "iam:CreateVirtualMFADevice",
+                    "iam:DeleteVirtualMFADevice",
+                    "iam:ChangePassword"
+                  ],
+                  "Resource": "arn:aws:iam::*:mfa/${aws:username}"
+                },
+                {
+                  "Sid": "AllowManageOwnUserMFA",
+                  "Effect": "Allow",
+                  "Action": [
+                    "iam:DeactivateMFADevice",
+                    "iam:EnableMFADevice",
+                    "iam:GetUser",
+                    "iam:ListMFADevices",
+                    "iam:ResyncMFADevice"
+                  ],
+                  "Resource": "arn:aws:iam::*:user/${aws:username}"
+                },
+                {
+                  "Sid": "DenyAllExceptListedIfNoMFA",
+                  "Effect": "Deny",
+                  "NotAction": [
+                    "iam:CreateVirtualMFADevice",
+                    "iam:EnableMFADevice",
+                    "iam:GetUser",
+                    "iam:ListUsers",
+                    "iam:ListMFADevices",
+                    "iam:ListVirtualMFADevices",
+                    "iam:ResyncMFADevice",
+                    "sts:GetSessionToken",
+                    "iam:GetAccountPasswordPolicy",
+                    "iam:ChangePassword"
+                  ],
+                  "Resource": "*",
+                  "Condition": {
+                    "BoolIfExists": {
+                      "aws:MultiFactorAuthPresent": "false",
+                      "aws:ViaAWSService": "false"
+                    }
+                  }
+                }
+              ]
+            }
+
+        - PolicyName: ProtectAccountMaintenanceResources
+          PolicyDocument: !Sub |
+            {
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "NotAction": [
+                    "lambda:Get*",
+                    "lambda:List*"
+                  ],
+                  "Resource": "arn:aws:lambda:*:*:function:account-maintenance",
+                  "Effect": "Deny"
+                },
+                {
+                  "Effect":"Deny",
+                  "Action":[
+                    "cloudformation:*"
+                  ],
+                  "Resource":"${AWS::StackId}"
+                }
+              ]
+            }
+
+  accountMaintenance:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: account-maintenance
+      Handler: index.handler
+      Runtime: python3.9
+      Tracing: Active
+      Timeout: 600
+      Policies:
+        - AWSLambdaExecute
+        - PowerUserAccess
+      Events:
+        scheduleEvent:
+          Type: Schedule
+          Properties:
+            Schedule: !Sub 'cron(0 ${TurnOffVMTime1},${TurnOffVMTime2} * * ? *)'
+            Name: AccountMaintenanceSchedule
+            Enabled: true
+      InlineCode: !Sub |
+        from datetime import datetime, timedelta, timezone
+        import boto3
+        import re
+
+
+        # UNATTACHED_EBS_LIFESPAN = 7
+        # LOAD_BALANCER_LIFESPAN = 30
+        # STOPPED_EC2_LIFESPAN = 30
+        # DB_LIFESPAN = 30
+
+        UNATTACHED_EBS_LIFESPAN = ${UnattachedVolumesLifespan}
+        LOAD_BALANCER_LIFESPAN = ${LoadBalancerLifespan}
+        STOPPED_EC2_LIFESPAN = ${StoppedEC2InstanceLifespan}
+        DB_LIFESPAN = ${DatabaseRDSLifespan}
+
+
+        def delete_non_attached_old_ebs(region):
+            ec2 = boto3.client('ec2', region_name=region['RegionName'])
+
+            unattached_vols = ec2.describe_volumes(
+                Filters=[
+                    {
+                        'Name': 'status',
+                        'Values': ['available']
+                    }
+                ]
+            )
+
+            cloud_trail = boto3.client('cloudtrail', region_name=region['RegionName'])
+
+            volume_detachments = cloud_trail.lookup_events(
+                LookupAttributes=[
+                    {
+                        'AttributeKey': 'EventName',
+                        'AttributeValue': 'DetachVolume'
+                    }
+                ],
+                StartTime=datetime.now(timezone.utc) - timedelta(days=UNATTACHED_EBS_LIFESPAN)
+            )
+
+            detached_vol_ids = []
+            for event in volume_detachments['Events']:
+                for resource in event.get('Resources', []):
+                    if 'volume' in resource['ResourceType'].lower():
+                        detached_vol_ids.append(resource['ResourceName'])
+
+            for volume in unattached_vols['Volumes']:
+                if volume['VolumeId'] not in detached_vol_ids:
+                    print(f'Deleting old unattached EBS: {volume}')
+                    response = ec2.delete_volume(VolumeId=volume['VolumeId'])
+
+
+        def delete_old_load_balancers(region):
+            elb = boto3.client('elbv2', region_name=region['RegionName'])
+            lbs = elb.describe_load_balancers()
+            for lb in lbs['LoadBalancers']:
+                lb_lifetime = datetime.now(timezone.utc) - lb['CreatedTime']
+                lb_lifespan = timedelta(days=LOAD_BALANCER_LIFESPAN)
+                tags = elb.describe_tags(ResourceArns=[lb['LoadBalancerArn']])
+                for tag in tags['TagDescriptions']:
+                    for t in tag['Tags']:
+                        if t['Key'].lower().strip() == 'lifespan':
+                            try:
+                                lb_lifespan = timedelta(days=max(int(t['Value']), LOAD_BALANCER_LIFESPAN))
+                            except:
+                                pass
+
+                if lb_lifetime > lb_lifespan:
+                    print(f'Deleting old LB: {lb}')
+                    response = elb.delete_load_balancer(LoadBalancerArn=lb['LoadBalancerArn'])
+
+
+        def stop_and_terminate_ec2(region):
+            ec2 = boto3.client('ec2', region_name=region['RegionName'])
+
+            instances_to_stop = []
+            instances_to_terminate = []
+            next_token = ''
+            while next_token is not None:
+                descriptions = ec2.describe_instances(
+                    # Filters=[
+                    #     {
+                    #         'Name': 'instance-lifecycle',
+                    #         'Values': ['scheduled']  # TODO exclude stop instances
+                    #     }
+                    # ],
+                    NextToken=next_token
+                )
+
+                for description in descriptions['Reservations']:
+                    for instance in description['Instances']:
+                        # valid state values: 'pending'|'running'|'shutting-down'|'terminated'|'stopping'|'stopped'
+                        if instance['State']['Name'] in ['running']:
+
+                            res = ec2.modify_instance_attribute(
+                                InstanceId=instance['InstanceId'],
+                                DisableApiStop={'Value': False}
+                            )
+                            instances_to_stop.append(instance['InstanceId'])
+
+                        elif instance['State']['Name'] in ['stopped']:
+                            stopped_reason = instance['StateTransitionReason']
+                            stopped_time = re.findall('.*\((.*)\)', stopped_reason)
+                            if stopped_time:
+                                stopped_time = datetime.strptime(stopped_time[0].split(' ')[0], '%Y-%m-%d')
+
+                                if datetime.now() - stopped_time > timedelta(days=STOPPED_EC2_LIFESPAN):
+                                    res = ec2.modify_instance_attribute(
+                                        InstanceId=instance['InstanceId'],
+                                        DisableApiTermination={'Value': False}
+                                    )
+                                    instances_to_terminate.append(instance['InstanceId'])
+
+                next_token = descriptions.get('NextToken')
+
+            if instances_to_stop:
+                print(f'Instances to stop: {instances_to_stop}')
+                response = ec2.stop_instances(InstanceIds=instances_to_stop)
+
+            if instances_to_terminate:
+                print(f'Instances to terminate: {instances_to_terminate}')
+                # response = ec2.terminate_instances(InstanceIds=instances_to_terminate)
+
+
+        def delete_old_rds_db_instances(region):
+            rds = boto3.client('rds', region_name=region['RegionName'])
+            dbs = rds.describe_db_instances()
+            db_lifespan = timedelta(days=DB_LIFESPAN)
+
+            for db in dbs['DBInstances']:
+                tags = rds.list_tags_for_resource(
+                    ResourceName=db['DBInstanceArn']
+                )
+                for tag in tags['TagList']:
+                    if tag['Key'].lower().strip() == 'lifespan':
+                        try:
+                            db_lifespan = timedelta(days=max(int(tag['Value']), DB_LIFESPAN))
+                        except:
+                            pass
+
+                if datetime.now(timezone.utc) - db['InstanceCreateTime'] > db_lifespan:
+                    print(f'Deleting RDS DB: {db}')
+                    response = rds.delete_db_instance(
+                        DBInstanceIdentifier=db['DBInstanceIdentifier'],
+                        SkipFinalSnapshot=True
+                    )
+
+
+        def handler(event, context):
+
+            client = boto3.client('ec2')
+            regions = client.describe_regions()
+
+            for region in regions['Regions']:
+
+                if not (region['RegionName'].startswith('eu') or region['RegionName'].startswith('us')):
+                    continue
+
+                print(f'Working on region {region["RegionName"]}')
+
+                try:
+                    stop_and_terminate_ec2(region)
+                    delete_non_attached_old_ebs(region)
+                    delete_old_load_balancers(region)
+                    delete_old_rds_db_instances(region)
+                except Exception as err:
+                    print(f'An error occurred {err}')
+
+
+        # handler_name(None, None)
