@@ -58,7 +58,7 @@ def delete_old_load_balancers(region):
         lb_lifespan = timedelta(days=LOAD_BALANCER_LIFESPAN)
         tags = elb.describe_tags(ResourceArns=[lb['LoadBalancerArn']])
         for tag in tags['TagDescriptions']:
-            for t in tag['Tags']:
+            for t in tag.get('Tags', []):
                 if t['Key'].lower().strip() == 'lifespan':
                     try:
                         lb_lifespan = timedelta(days=max(int(t['Value']), LOAD_BALANCER_LIFESPAN))
@@ -106,7 +106,7 @@ def stop_and_terminate_ec2(region):
                     if stopped_time:
                         stopped_time = datetime.strptime(stopped_time[0].split(' ')[0], '%Y-%m-%d')
 
-                        for tag in instance['Tags']:
+                        for tag in instance.get('Tags', []):
                             if tag['Key'].lower().strip() == 'lifespan':
                                 try:
                                     ec2_lifespan = timedelta(days=max(int(tag['Value']), STOPPED_EC2_LIFESPAN))
@@ -124,7 +124,7 @@ def stop_and_terminate_ec2(region):
 
     if instances_to_stop:
         print(f'Instances to stop: {instances_to_stop}')
-        response = ec2.stop_instances(InstanceIds=instances_to_stop)
+        # response = ec2.stop_instances(InstanceIds=instances_to_stop)
 
     if instances_to_terminate:
         print(f'Instances to terminate: {instances_to_terminate}')
@@ -141,14 +141,14 @@ def delete_old_rds_db_instances(region):
         tags = rds.list_tags_for_resource(
             ResourceName=db['DBInstanceArn']
         )
-        for tag in tags['TagList']:
+        for tag in tags.get('TagList', []):
             if tag['Key'].lower().strip() == 'lifespan':
                 try:
                     db_lifespan = timedelta(days=max(int(tag['Value']), DB_LIFESPAN))
                 except:
                     pass
 
-        if datetime.now(timezone.utc) - db['InstanceCreateTime'] > db_lifespan:
+        if db['DBInstanceStatus'] != 'deleting' and datetime.now(timezone.utc) - db['InstanceCreateTime'] > db_lifespan:
             print(f'Deleting RDS DB: {db}')
             response = rds.delete_db_instance(
                 DBInstanceIdentifier=db['DBInstanceIdentifier'],
@@ -168,13 +168,11 @@ def handler(event, context):
 
         print(f'Working on region {region["RegionName"]}')
 
-        try:
-            stop_and_terminate_ec2(region)
-            delete_non_attached_old_ebs(region)
-            delete_old_load_balancers(region)
-            delete_old_rds_db_instances(region)
-        except Exception as err:
-            print(f'An error occurred {err}')
+        stop_and_terminate_ec2(region)
+        delete_non_attached_old_ebs(region)
+        delete_old_load_balancers(region)
+        delete_old_rds_db_instances(region)
 
 
-handler(None, None)
+
+# handler(None, None)
