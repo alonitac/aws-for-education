@@ -1,9 +1,9 @@
 from datetime import datetime, timedelta, timezone
 import re
-import sys
-from pip._internal import main
+import sys, traceback
+import subprocess
 
-main(['install', 'boto3>=1.24,<2.0', '--target', '/tmp/'])
+subprocess.call('pip install boto3>=1.24,<2.0 --target /tmp/ --no-cache-dir'.split(), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 sys.path.insert(0, '/tmp/')
 
 import boto3
@@ -173,11 +173,15 @@ def handler(event, context):
 
         print(f'Working on region {region["RegionName"]}')
 
-        stop_and_terminate_ec2(region)
-        delete_non_attached_old_ebs(region)
-        delete_old_load_balancers(region)
-        delete_old_rds_db_instances(region)
-
+        try:
+            stop_and_terminate_ec2(region)
+            delete_non_attached_old_ebs(region)
+            delete_old_load_balancers(region)
+            delete_old_rds_db_instances(region)
+        except:
+            print(f'Error occured during maintenance job')
+            traceback.print_exc(file=sys.stdout)
+            
 
 
 # handler(None, None)

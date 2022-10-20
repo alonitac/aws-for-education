@@ -124,15 +124,6 @@ Resources:
               "Version": "2012-10-17",
               "Statement": [
                 {
-                  "Sid": "AllowReservedCapacityDescriptions",
-                  "Effect": "Allow",
-                  "Action": [
-                      "dynamodb:DescribeReservedCapacity",
-                      "dynamodb:DescribeReservedCapacityOfferings"
-                  ],
-                  "Resource": "arn:aws:dynamodb:*:*:*"
-                },
-                {
                   "Sid": "DenyReservedCapacityPurchases",
                   "Effect": "Deny",
                   "Action": "dynamodb:PurchaseReservedCapacityOfferings",
@@ -174,7 +165,12 @@ Resources:
                     "iam:UpdateAccountPasswordPolicy",
                     "sts:AssumeRole"
                   ],
-                  "Resource": "*"
+                  "Resource": "*",
+                  "Condition": {
+                    "ArnNotEquals": {
+                      "iam:PolicyARN": "arn:aws:iam::aws:policy/IAMUserChangePassword"
+                    }
+                  }
                 }
               ]
             }
@@ -326,37 +322,6 @@ Resources:
               "Version": "2012-10-17",
               "Statement": [
                 {
-                  "Sid": "AllowViewAccountInfo",
-                  "Effect": "Allow",
-                  "Action": [
-                    "iam:ListVirtualMFADevices",
-                    "iam:GetAccountPasswordPolicy"
-                  ],
-                  "Resource": "*"
-                },
-                {
-                  "Sid": "AllowManageOwnVirtualMFADevice",
-                  "Effect": "Allow",
-                  "Action": [
-                    "iam:CreateVirtualMFADevice",
-                    "iam:DeleteVirtualMFADevice",
-                    "iam:ChangePassword"
-                  ],
-                  "Resource": "arn:aws:iam::*:mfa/${aws:username}"
-                },
-                {
-                  "Sid": "AllowManageOwnUserMFA",
-                  "Effect": "Allow",
-                  "Action": [
-                    "iam:DeactivateMFADevice",
-                    "iam:EnableMFADevice",
-                    "iam:GetUser",
-                    "iam:ListMFADevices",
-                    "iam:ResyncMFADevice"
-                  ],
-                  "Resource": "arn:aws:iam::*:user/${aws:username}"
-                },
-                {
                   "Sid": "DenyAllExceptListedIfNoMFA",
                   "Effect": "Deny",
                   "NotAction": [
@@ -405,6 +370,13 @@ Resources:
               ]
             }
 
+  accountMaintenanceFailureAlert:
+    Type: AWS::SNS::Topic
+    Properties:
+      Subscription:
+        - Endpoint: "alon.itach@mail.huji.ac.il"
+          Protocol: "email"
+      TopicName: accountMaintenanceFailure
   accountMaintenance:
     Type: AWS::Serverless::Function
     Properties:
@@ -428,9 +400,9 @@ Resources:
         from datetime import datetime, timedelta, timezone
         import re
         import sys
-        from pip._internal import main
+        import subprocess
 
-        main(['install', 'boto3>=1.24,<2.0', '--target', '/tmp/'])
+        subprocess.call('pip install boto3>=1.24,<2.0 --target /tmp/ --no-cache-dir'.split(), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         sys.path.insert(0, '/tmp/')
 
         import boto3
@@ -600,11 +572,10 @@ Resources:
 
                 print(f'Working on region {region["RegionName"]}')
 
+                try
                 stop_and_terminate_ec2(region)
                 delete_non_attached_old_ebs(region)
                 delete_old_load_balancers(region)
                 delete_old_rds_db_instances(region)
-
-
 
         # handler(None, None)
