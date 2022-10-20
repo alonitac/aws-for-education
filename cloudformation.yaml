@@ -28,6 +28,15 @@ Parameters:
     Default: 30
     Description: The time after which an RDS db will be deleted (in Days)
 Resources:
+  accountMaintenanceFailureAlert:
+    Type: AWS::SNS::Topic
+    Properties:
+      Subscription:
+#        - Endpoint: "alon.itach@mail.huji.ac.il"
+#          Protocol: "email"
+        - Endpoint: "alon.itach@mail.huji.ac.il"
+          Protocol: "email"
+      TopicName: accountMaintenanceFailure
   StudentsGroup:
     Type: AWS::IAM::Group
     Properties:
@@ -316,36 +325,36 @@ Resources:
               ]
             }
 
-        - PolicyName: RequireMFA
-          PolicyDocument: |
-            {
-              "Version": "2012-10-17",
-              "Statement": [
-                {
-                  "Sid": "DenyAllExceptListedIfNoMFA",
-                  "Effect": "Deny",
-                  "NotAction": [
-                    "iam:CreateVirtualMFADevice",
-                    "iam:EnableMFADevice",
-                    "iam:GetUser",
-                    "iam:ListUsers",
-                    "iam:ListMFADevices",
-                    "iam:ListVirtualMFADevices",
-                    "iam:ResyncMFADevice",
-                    "sts:GetSessionToken",
-                    "iam:GetAccountPasswordPolicy",
-                    "iam:ChangePassword"
-                  ],
-                  "Resource": "*",
-                  "Condition": {
-                    "BoolIfExists": {
-                      "aws:MultiFactorAuthPresent": "false",
-                      "aws:ViaAWSService": "false"
-                    }
-                  }
-                }
-              ]
-            }
+#        - PolicyName: RequireMFA
+#          PolicyDocument: |
+#            {
+#              "Version": "2012-10-17",
+#              "Statement": [
+#                {
+#                  "Sid": "DenyAllExceptListedIfNoMFA",
+#                  "Effect": "Deny",
+#                  "NotAction": [
+#                    "iam:CreateVirtualMFADevice",
+#                    "iam:EnableMFADevice",
+#                    "iam:GetUser",
+#                    "iam:ListUsers",
+#                    "iam:ListMFADevices",
+#                    "iam:ListVirtualMFADevices",
+#                    "iam:ResyncMFADevice",
+#                    "sts:GetSessionToken",
+#                    "iam:GetAccountPasswordPolicy",
+#                    "iam:ChangePassword"
+#                  ],
+#                  "Resource": "*",
+#                  "Condition": {
+#                    "BoolIfExists": {
+#                      "aws:MultiFactorAuthPresent": "false",
+#                      "aws:ViaAWSService": "false"
+#                    }
+#                  }
+#                }
+#              ]
+#            }
 
         - PolicyName: ProtectAccountMaintenanceResources
           PolicyDocument: !Sub |
@@ -370,13 +379,6 @@ Resources:
               ]
             }
 
-  accountMaintenanceFailureAlert:
-    Type: AWS::SNS::Topic
-    Properties:
-      Subscription:
-        - Endpoint: "alon.itach@mail.huji.ac.il"
-          Protocol: "email"
-      TopicName: accountMaintenanceFailure
   accountMaintenance:
     Type: AWS::Serverless::Function
     Properties:
