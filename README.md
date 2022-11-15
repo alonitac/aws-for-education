@@ -43,5 +43,8 @@
 3. Choose **Replace current template**.
 4. Proceed as described in the _Deploy_ section above.
 
+# Give exemption to resources
+
+You can tag EC2 instance, Load Balancers and RDS Databases with a `lifespan` tag key and value of the number of days would you like your resource to be protected from being deleted.
 
 

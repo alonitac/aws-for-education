@@ -2,21 +2,18 @@ from datetime import datetime, timedelta, timezone
 import re
 import sys, traceback
 import subprocess
+import os
 
 subprocess.call('pip install boto3>=1.24,<2.0 --target /tmp/ --no-cache-dir'.split(), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 sys.path.insert(0, '/tmp/')
 
 import boto3
 
-UNATTACHED_EBS_LIFESPAN = 7
-LOAD_BALANCER_LIFESPAN = 30
-STOPPED_EC2_LIFESPAN = 30
-DB_LIFESPAN = 30
-
-# UNATTACHED_EBS_LIFESPAN = ${UnattachedVolumesLifespan}
-# LOAD_BALANCER_LIFESPAN = ${LoadBalancerLifespan}
-# STOPPED_EC2_LIFESPAN = ${StoppedEC2InstanceLifespan}
-# DB_LIFESPAN = ${DatabaseRDSLifespan}
+UNATTACHED_EBS_LIFESPAN = int(os.environ.get('UNATTACHED_EBS_LIFESPAN', 7))
+LOAD_BALANCER_LIFESPAN = int(os.environ.get('LOAD_BALANCER_LIFESPAN', 30))
+STOPPED_EC2_LIFESPAN = int(os.environ.get('STOPPED_EC2_LIFESPAN', 30))
+DB_LIFESPAN = int(os.environ.get('DB_LIFESPAN', 30))
+TOPIC_ARN = os.environ.get('TOPIC_ARN')
 
 
 def delete_non_attached_old_ebs(region):
@@ -166,6 +163,7 @@ def handler(event, context):
     client = boto3.client('ec2')
     regions = client.describe_regions()
 
+    exceptions = []
     for region in regions['Regions']:
 
         if not (region['RegionName'].startswith('eu') or region['RegionName'].startswith('us')):
@@ -181,7 +179,36 @@ def handler(event, context):
         except:
             print(f'Error occured during maintenance job')
             traceback.print_exc(file=sys.stdout)
-            
+            exceptions.append({
+                'region': region["RegionName"],
+                'message': traceback.format_exc()
+            })
 
+    if exceptions:
+        client = boto3.client('sns', region_name=TOPIC_ARN.split(':')[3])
+        response = client.publish(
+            TopicArn=TOPIC_ARN,
+            Message=f"""
+                Lambda job failed.
+        
+                ------------------------------------------------------------------------------------
+                Event:
+                ------------------------------------------------------------------------------------
+                {event}
+                
+                ------------------------------------------------------------------------------------
+                Contect:
+                ------------------------------------------------------------------------------------
+                {context}
+                
+                ------------------------------------------------------------------------------------
+                Exception:
+                ------------------------------------------------------------------------------------
+                {exceptions}
+                
+                ------------------------------------------------------------------------------------
+            """,
+            Subject='Account maintenance Lambda function failure'
+        )
 
 # handler(None, None)
