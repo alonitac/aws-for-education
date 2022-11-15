@@ -1,4 +1,30 @@
-# AWS Education Accounts Deployment
+# AWS Education Accounts
+
+## Education account setting
+
+- All students IAM users must reside in the existed `students` IAM group.
+- Users outside this group are not restricted.
+- Students can create IAM users and groups but aren't able to associate any policies on them.
+- Students can create IAM role **and associate policies on them!**
+- Students can operate on US and EU regions only.
+- **ALL** EC2 instances are stopped twice a day (currently at 4pm and midnight).
+- Unused EC2 instances are **terminated** after 30 days on inactivity.
+- RDS databases are being deleted after 30 days.
+- LoadBalancers are being deleted after 30 days.
+
+## Policies enforced
+
+- Read-only operations on AWS Marketplace.
+- Deny account audit trail deletion and core configuration changes (CloudTrail, Config, Guard).
+- Deny organization leave.
+- Deny DynamoDB reserved capacity purchases.
+- Deny privilege escalation (students cannot leave students group or change any policy of it).
+- Deny VPC peering.
+- Deny enablement of non US and EU regions.
+- Limit EC2 instance type to `*.nano`, `*.micro`, `*.small`.
+- Deny reserved instances purchases.
+- Limit EBS volume type to `gp2` and `magnetic` and max size of **30 GB**.
+- Protect account maintenance resources (the CloudFormation stack, Lambda function etc..) from being deleted by students. 
 
 ## Deploy the CloudFormation stack 
 
@@ -16,36 +42,6 @@
 2. On the stack details page, click the **Update** button.
 3. Choose **Replace current template**.
 4. Proceed as described in the _Deploy_ section above.
-
-# Give exemption to resources
-
-You can tag EC2 instance, Load Balancers and RDS Databases with a `lifespan` tag key and value of the number of days would you like your resource to be protected from being deleted.
-
-# Working locally with Python and MFA 
-
-Here is an example of using Python to communicate with AWS API when MFA is enforced (We assume the machine has credentials configured locally).
-
-```python
-import boto3
-from botocore.session import Session
-
-mfa_otp = input("Enter the MFA code: ")
-
-mfa_creds = boto3.client('sts').get_session_token(
-    DurationSeconds=36000,
-    SerialNumber=Session().get_scoped_config().get('mfa_serial'),
-    TokenCode=mfa_otp
-)
-
-session = boto3.session.Session(
-    aws_access_key_id=mfa_creds['Credentials']['AccessKeyId'],
-    aws_secret_access_key=mfa_creds['Credentials']['SecretAccessKey'],
-    aws_session_token=mfa_creds['Credentials']['SessionToken']
-)
-
-ec2 = session.client('ec2', region_name='us-east-1')
-descriptions = ec2.describe_instances()
-```
 
 
 
