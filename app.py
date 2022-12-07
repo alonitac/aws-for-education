@@ -151,10 +151,17 @@ def delete_old_rds_db_instances(region):
                     pass
 
         if db['DBInstanceStatus'] != 'deleting' and datetime.now(timezone.utc) - db['InstanceCreateTime'] > db_lifespan:
+            if db['DeletionProtection']:
+                rds.modify_db_instance(
+                    DBInstanceIdentifier=db['DBInstanceIdentifier'],
+                    DeletionProtection=False
+                )
+
             print(f'Deleting RDS DB: {db}')
             response = rds.delete_db_instance(
                 DBInstanceIdentifier=db['DBInstanceIdentifier'],
-                SkipFinalSnapshot=True
+                SkipFinalSnapshot=True,
+                DeleteAutomatedBackups=True
             )
 
 
