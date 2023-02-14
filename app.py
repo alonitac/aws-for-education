@@ -130,7 +130,7 @@ def stop_and_terminate_ec2(region):
 
     if instances_to_terminate:
         print(f'Instances to terminate: {instances_to_terminate}')
-        # response = ec2.terminate_instances(InstanceIds=instances_to_terminate)
+        response = ec2.terminate_instances(InstanceIds=instances_to_terminate)
 
 
 def delete_old_rds_db_instances(region):
