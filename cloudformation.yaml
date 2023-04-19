@@ -286,6 +286,7 @@ Resources:
                     "ForAnyValue:StringNotLike": {
                       "ec2:VolumeType": [
                         "gp2",
+                        "gp3",
                         "standard"
                       ]
                     }
@@ -319,7 +320,8 @@ Resources:
                       "rds:DatabaseClass": [
                         "*.medium",
                         "*.small",
-                        "*.micro"
+                        "*.micro",
+                        "*.medium"
                       ]
                     }
                   }
