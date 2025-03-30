@@ -263,7 +263,8 @@ Resources:
                       "ec2:InstanceType": [
                         "*.nano",
                         "*.small",
-                        "*.micro"
+                        "*.micro",
+                        "t3.medium"
                       ]
                     }
                   }
